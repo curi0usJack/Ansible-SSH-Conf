@@ -1,0 +1,10 @@
+#jinja2:lstrip_blocks: True
+
+{% for host in groups['launched'] %}
+Host aws{{ loop.index }}
+  User ubuntu
+  IdentityFile {{ ec2_key_path }}
+  Hostname {{ hostvars[host]['inventory_hostname'] }}
+  ServerAliveInterval 120
+
+{% endfor %}

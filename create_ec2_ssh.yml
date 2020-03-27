@@ -1,0 +1,57 @@
+---
+# Execute all the following actions locally on our controller machine
+- hosts: localhost
+  connection: local
+  gather_facts: false
+  vars:
+    # CHANGE THESE
+    ec2_key_path: /path/to/your/ec2.pem
+    include_path: /path/to/your/ssh/include/dir
+
+  tasks:
+    # FILL THIS OUT. Create a new EC2 instance
+    - name: Provision EC2 Box
+      local_action:
+        module: ec2
+        aws_access_key: <Your AWS access key>
+        aws_secret_key: <Your AWS secret key> 
+        key_name: <Your key pair name (don't include .pem)>
+        group_id: <Your Security Group ID>
+        instance_type: t2.micro
+        instance_tags: '{"Name":"Demo Server 1","Keyword":"project_num_1234","Purpose":"webserver"}'
+        image: ami-0a313d6098716f372 #Ubuntu 18.04
+        region: us-east-1
+        vpc_subnet_id: <Your VPC subnet ID>
+        assign_public_ip: yes
+        wait: true
+        count: 1
+      register: ec2
+
+    # Add the new instance details to our launched in-memory inventory group
+    - add_host:
+        name: "{{ item.public_ip }}"
+        instance_id: "{{ item.id }}"
+        group: launched
+        info: "{{ item }}"
+      loop: "{{ ec2.instances }}"
+
+    - name: Wait 300 seconds for port 22 to open on each instance.
+      wait_for:
+        host: "{{ item.public_ip }}"
+        port: 22
+        delay: 30
+        timeout: 300
+        state: started
+      with_items: "{{ ec2.instances }}"
+
+    # Accept the new key into our known_hosts file
+    - name: Accepting new keys into known_hosts
+      shell: ssh-keyscan -H {{ item.public_ip }} >> ~/.ssh/known_hosts
+      loop: '{{ ec2.instances }}'
+
+    # Generate the local SSH configuration file and put it in our include directory
+    - name: Creating local SSH config files
+      template: 
+        src: templates/ssh_template.j2
+        dest: "{{ include_path }}" 
+        mode: 0644
